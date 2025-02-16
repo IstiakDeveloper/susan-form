@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Form;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use Str;
 
 class PublicFormController extends Controller
 {
@@ -12,7 +14,7 @@ class PublicFormController extends Controller
     {
         $form = Form::where('slug', $slug)
             ->where('is_active', true)
-            ->where(function($query) {
+            ->where(function ($query) {
                 $query->whereNull('expires_at')
                     ->orWhere('expires_at', '>', now());
             })
@@ -28,47 +30,35 @@ class PublicFormController extends Controller
     {
         $form = Form::where('slug', $slug)
             ->where('is_active', true)
-            ->where(function($query) {
-                $query->whereNull('expires_at')
-                    ->orWhere('expires_at', '>', now());
-            })
             ->with('fields')
             ->firstOrFail();
 
-        // Build validation rules based on form fields
+        // Validation rules
         $rules = [];
         foreach ($form->fields as $field) {
-            $fieldRules = ['required_if:' . $field->name . '_filled,true'];
+            $fieldRules = [];
 
             if ($field->is_required) {
-                $fieldRules = ['required'];
+                $fieldRules[] = 'required';
             }
 
-            switch ($field->type) {
-                case 'email':
-                    $fieldRules[] = 'email';
-                    break;
-                case 'number':
-                    $fieldRules[] = 'numeric';
-                    break;
-                case 'date':
-                    $fieldRules[] = 'date';
-                    break;
-                case 'file':
-                    $fieldRules[] = 'file';
-                    $fieldRules[] = 'max:10240'; // 10MB max
-                    break;
-            }
-
-            if (in_array($field->type, ['select', 'radio'])) {
-                $options = collect($field->options)->pluck('value')->toArray();
-                $fieldRules[] = 'in:' . implode(',', $options);
-            }
-
-            if ($field->type === 'checkbox') {
+            if ($field->type === 'signature') {
                 $fieldRules[] = 'array';
-                $options = collect($field->options)->pluck('value')->toArray();
-                $fieldRules[] = 'in:' . implode(',', $options);
+                $fieldRules[] = function ($attribute, $value, $fail) {
+                    if (!is_array($value) || empty($value)) {
+                        $fail('Signature is required and must be an array.');
+                    }
+
+                    foreach ($value as $signature) {
+                        if (is_string($signature)) {
+                            $signature = json_decode($signature, true);
+                        }
+
+                        if (!is_array($signature) || !isset($signature['signature']) || !$signature['signature']) {
+                            $fail('Each signature must contain a valid signature image.');
+                        }
+                    }
+                };
             }
 
             $rules[$field->name] = $fieldRules;
@@ -76,19 +66,53 @@ class PublicFormController extends Controller
 
         $validated = $request->validate($rules);
 
-        // Handle file uploads
+        // Handle signature fields
         foreach ($form->fields as $field) {
-            if ($field->type === 'file' && isset($validated[$field->name])) {
-                $path = $request->file($field->name)->store('form-uploads');
-                $validated[$field->name] = $path;
+            if ($field->type === 'signature' && isset($validated[$field->name])) {
+                $processedSignatures = [];
+
+                foreach ($validated[$field->name] as $signatureEntry) {
+                    if (is_string($signatureEntry)) {
+                        $signatureData = json_decode($signatureEntry, true);
+                    } else {
+                        $signatureData = $signatureEntry;
+                    }
+
+                    // Remove data URI prefix
+                    $base64Image = preg_replace('/^data:image\/\w+;base64,/', '', $signatureData['signature']);
+
+                    // Decode base64
+                    $imageData = base64_decode($base64Image);
+
+                    // Generate filename
+                    $filename = uniqid() . '.png';
+                    $fullPath = public_path('storage/signatures/' . $filename);
+
+                    // Ensure directory exists
+                    if (!file_exists(public_path('storage/signatures'))) {
+                        mkdir(public_path('storage/signatures'), 0755, true);
+                    }
+
+                    // Write file directly
+                    file_put_contents($fullPath, $imageData);
+
+                    // Add to processed signatures
+                    $processedSignatures[] = [
+                        'signature' => 'storage/signatures/' . $filename,
+                        'printed_name' => $signatureData['printed_name'] ?? null,
+                        'date' => $signatureData['date'] ?? now()->toDateString()
+                    ];
+                }
+
+                // Replace original data with processed signatures
+                $validated[$field->name] = $processedSignatures;
             }
         }
 
         // Create submission
-        $form->submissions()->create([
+        $submission = $form->submissions()->create([
             'data' => $validated,
             'submitter_ip' => $request->ip(),
-            'submitter_email' => $validated['email'] ?? null,
         ]);
 
         return back()->with('message', 'Form submitted successfully');

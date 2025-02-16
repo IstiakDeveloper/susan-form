@@ -1,29 +1,40 @@
 <?php
 
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FormController;
 use App\Http\Controllers\Admin\FormFieldController;
 use App\Http\Controllers\Admin\FormSubmissionController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\PublicFormController;
 use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 // Welcome page
 Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
+    return redirect()->route('login');
 });
 
-// Dashboard
-Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
 
+// Dashboard
+// Route::get('/dashboard', function () {
+//     return Inertia::render('Dashboard');
+// })->middleware(['auth', 'verified'])->name('dashboard');
+
+
+Route::get('/storage-link', function () {
+    Artisan::call('storage:link');
+
+    return response()->json(['message' => 'Storage link created successfully.']);
+})->name('storage.link');
+
+// Route for running migrations
+Route::get('/migrate', function () {
+    Artisan::call('migrate');
+
+    return response()->json(['message' => 'Migrations run successfully.']);
+})->name('migrate');
 // Profile Routes
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
@@ -68,6 +79,13 @@ Route::middleware(['auth'])->prefix('admin')->name('admin.')->group(function () 
         Route::delete('/forms/{form}/submissions/{submission}', 'destroy')->name('forms.submissions.destroy');
         Route::post('/forms/{form}/submissions/export', 'export')->name('forms.submissions.export');
     });
+});
+
+Route::middleware(['auth'])->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('/admin/analytics', [DashboardController::class, 'analytics'])->name('admin.analytics');
+    Route::get('/admin/export', [DashboardController::class, 'export'])->name('admin.export');
+    Route::get('/admin/insights', [DashboardController::class, 'insights'])->name('admin.insights');
 });
 
 // Public Form Routes

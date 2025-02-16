@@ -10,15 +10,15 @@ use Illuminate\Support\Str;
 
 class FormFieldController extends Controller
 {
+
     public function store(Request $request, Form $form)
     {
         $validated = $request->validate([
             'label' => 'required|string|max:255',
-            'type' => 'required|in:text,textarea,email,number,date,select,radio,checkbox,file',
+            'type' => 'required|in:text,textarea,email,number,date,select,radio,checkbox,file,signature',
             'is_required' => 'boolean',
             'options' => 'nullable|array',
-            'options.*.label' => 'required_with:options|string',
-            'options.*.value' => 'required_with:options|string',
+            'signature_config' => 'nullable|array',
             'placeholder' => 'nullable|string',
             'help_text' => 'nullable|string',
         ]);
@@ -29,6 +29,14 @@ class FormFieldController extends Controller
         // Set order to be last
         $validated['order'] = $form->fields()->count();
 
+        // Handle signature configuration
+        if ($validated['type'] === 'signature') {
+            $validated['options'] = $request->input('signature_config', [
+                'show_date' => false,
+                'show_print_name' => false
+            ]);
+        }
+
         $form->fields()->create($validated);
 
         return back()->with('message', 'Field added successfully');
@@ -38,18 +46,24 @@ class FormFieldController extends Controller
     {
         $validated = $request->validate([
             'label' => 'required|string|max:255',
-            'type' => 'required|in:text,textarea,email,number,date,select,radio,checkbox,file',
+            'type' => 'required|in:text,textarea,email,number,date,select,radio,checkbox,file,signature',
             'is_required' => 'boolean',
             'options' => 'nullable|array',
-            'options.*.label' => 'required_with:options|string',
-            'options.*.value' => 'required_with:options|string',
+            'signature_config' => 'nullable|array',
             'placeholder' => 'nullable|string',
             'help_text' => 'nullable|string',
-            'order' => 'required|integer',
         ]);
 
-        // Update field name if label changed
+        // Generate field name from label
         $validated['name'] = Str::slug($validated['label']);
+
+        // Handle signature configuration
+        if ($validated['type'] === 'signature') {
+            $validated['options'] = $request->input('signature_config', [
+                'show_date' => false,
+                'show_print_name' => false
+            ]);
+        }
 
         $field->update($validated);
 

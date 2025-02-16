@@ -23,6 +23,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import FormFieldEditModal from "./FormFieldEditModal";
+import AdminLayout from "@/Layouts/AdminLayout";
 
 // Sortable Item Component
 function SortableItem({ field, onEdit, onDelete, form }) {
@@ -155,6 +156,7 @@ export default function Edit({ form }) {
     };
 
     return (
+        <AdminLayout>
         <div className="container mx-auto px-4 py-6">
             <Head title={`Edit Form: ${form.name}`} />
 
@@ -224,5 +226,6 @@ export default function Edit({ form }) {
                 />
             )}
         </div>
+        </AdminLayout>
     );
 }
